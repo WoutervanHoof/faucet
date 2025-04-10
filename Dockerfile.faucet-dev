@@ -1,0 +1,21 @@
+## Image name: faucet/faucet
+
+FROM faucet/python3:12.0.2
+
+COPY ./requirements.txt /faucet-src/requirements.txt
+
+COPY ./docker ./faucet-src/docker
+
+RUN ./faucet-src/docker/install-faucet-deps.sh
+
+COPY ./ /faucet-src/
+
+RUN ./faucet-src/docker/install-faucet-pip.sh
+
+RUN ./faucet-src/docker/install-faucet-finish.sh
+
+VOLUME ["/etc/faucet/", "/var/log/faucet/", "/var/run/faucet/"]
+
+EXPOSE 6653 9302
+
+CMD ["faucet"]

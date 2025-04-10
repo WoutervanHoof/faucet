@@ -44,7 +44,7 @@ services:
         restart: always
         build:
             context: .
-            dockerfile: Dockerfile.faucet
+            dockerfile: Dockerfile.faucet-dev
         image: 'faucet/faucet:latest'
         volumes:
             - '${FAUCET_PREFIX}/var/log/faucet:/var/log/faucet'
