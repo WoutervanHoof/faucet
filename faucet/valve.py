@@ -39,6 +39,10 @@ from faucet.valve_lldp import ValveLLDPManager
 from faucet.valve_outonly import OutputOnlyManager
 from faucet.valve_stack import ValveStackManager
 
+from os_ken.lib.packet import (
+    packet,
+    udp,
+)
 
 # TODO: has to be here to avoid eventlet monkey patch in faucet_dot1x.
 class Dot1xManager(ValveManagerBase):
@@ -1462,6 +1466,12 @@ class Valve:
             self, now, pkt_meta, other_valves
         )
         return ofmsgs_by_valve
+    
+    def update_mud_manager(self, data):
+        # Process data, extract MUD URL and IP Address TLV's
+        # Send to Mud Manager
+        self.logger.info("%s" % str(data))
+        return
 
     def rcv_packet(self, now, other_valves, pkt_meta):
         """Handle a packet from the dataplane (eg to re/learn a host).
@@ -1476,6 +1486,16 @@ class Valve:
         Returns:
             dict: OpenFlow messages, if any by Valve.
         """
+        if isinstance(pkt_meta, valve_packet.PacketMeta):
+            pkt_meta.reparse_ip()
+            # if pkt_meta.l3_pkt is not None and hasattr(pkt_meta.l3_pkt, "proto") and (pkt_meta.l3_pkt.proto == 17 or pkt_meta.l3_pkt.proto == 2048):
+            if pkt_meta.l3_pkt is not None and hasattr(pkt_meta.l3_pkt, "nxt") and (pkt_meta.l3_pkt.nxt == 17 or pkt_meta.l3_pkt.nxt == 2048):
+                pkt = packet.Packet(pkt_meta.data)
+                if type(pkt[-2]) is udp.udp:
+                    self.update_mud_manager(pkt[-1])
+                    # self.logger.info("udp: %s" % str(pkt[-2]))
+                    # self.logger.info("data: %s" % str(pkt[-1]))
+
         if pkt_meta.vlan is None:
             return self._non_vlan_rcv_packet(now, other_valves, pkt_meta)
         return self._vlan_rcv_packet(now, other_valves, pkt_meta)

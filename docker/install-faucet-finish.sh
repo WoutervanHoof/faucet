@@ -24,5 +24,4 @@ FROOT="/faucet-src"
 
 # Smoke test
 faucet -V || exit 1
-
-find / -name \*pyc -delete || exit 1
+# find / -name \*pyc -delete || exit 1
