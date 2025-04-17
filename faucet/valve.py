@@ -21,6 +21,7 @@
 
 import difflib
 import logging
+import requests
 
 from collections import defaultdict, deque
 
@@ -43,6 +44,9 @@ from os_ken.lib.packet import (
     packet,
     udp,
 )
+
+class TlvParseException(Exception):
+    pass
 
 # TODO: has to be here to avoid eventlet monkey patch in faucet_dot1x.
 class Dot1xManager(ValveManagerBase):
@@ -1467,11 +1471,44 @@ class Valve:
         )
         return ofmsgs_by_valve
     
-    def update_mud_manager(self, data):
+    def update_mud_manager(self, data: bytes):
         # Process data, extract MUD URL and IP Address TLV's
         # Send to Mud Manager
-        self.logger.info("%s" % str(data))
-        return
+        mudData = {}
+        try:
+            mudData = self.parse_tlvs(data)
+
+            url = "http://mud-manager:5000/enroll"
+            x = requests.post(url, json = mudData)
+            self.logger.info("Enrolled device response: %d" % x.status_code)
+        except UnicodeDecodeError as e:
+            self.logger.error("failed to parse mud tlvs: %s" % str(e))
+            return
+        except IndexError as e:
+            self.logger.error("failed to parse tlvs: %s" % str(e))
+            return
+        except TlvParseException as e:
+            self.logger.error("parse error: %s" % str(e))
+            return
+        except Exception as e:
+            self.logger.error("unexpected error: %s" % str(e))
+
+    def parse_tlvs(self, data: bytes):
+        mudData =  {}
+        while len(data) > 2:
+            typeByte = int(data[0])
+            length = int(data[1])
+            value = data[2:length + 2]
+            if typeByte == 0:
+                mudData["mud-url"] = value.decode(encoding="utf-8")
+            elif typeByte == 1:
+                mudData["ipaddress"] = value.decode(encoding="utf-8")
+            else:
+                raise TlvParseException("unknown tlv type: %d" % typeByte)
+
+            data = data[length + 2:]
+
+        return mudData
 
     def rcv_packet(self, now, other_valves, pkt_meta):
         """Handle a packet from the dataplane (eg to re/learn a host).
@@ -1486,15 +1523,9 @@ class Valve:
         Returns:
             dict: OpenFlow messages, if any by Valve.
         """
-        if isinstance(pkt_meta, valve_packet.PacketMeta):
-            pkt_meta.reparse_ip()
-            # if pkt_meta.l3_pkt is not None and hasattr(pkt_meta.l3_pkt, "proto") and (pkt_meta.l3_pkt.proto == 17 or pkt_meta.l3_pkt.proto == 2048):
-            if pkt_meta.l3_pkt is not None and hasattr(pkt_meta.l3_pkt, "nxt") and (pkt_meta.l3_pkt.nxt == 17 or pkt_meta.l3_pkt.nxt == 2048):
-                pkt = packet.Packet(pkt_meta.data)
-                if type(pkt[-2]) is udp.udp:
-                    self.update_mud_manager(pkt[-1])
-                    # self.logger.info("udp: %s" % str(pkt[-2]))
-                    # self.logger.info("data: %s" % str(pkt[-1]))
+        pkt = packet.Packet(pkt_meta.data)
+        if type(pkt[-2]) is udp.udp and pkt[-2].dst_port == 1234:
+            self.update_mud_manager(pkt[-1])
 
         if pkt_meta.vlan is None:
             return self._non_vlan_rcv_packet(now, other_valves, pkt_meta)
