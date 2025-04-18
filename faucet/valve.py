@@ -1478,7 +1478,7 @@ class Valve:
         try:
             mudData = self.parse_tlvs(data)
 
-            url = "http://mud-manager:5000/enroll"
+            url = valve_util.get_setting(name="FAUCET_MUD_MANAGER") + "/enroll"
             x = requests.post(url, json = mudData)
             self.logger.info("Enrolled device response: %d" % x.status_code)
         except UnicodeDecodeError as e:
